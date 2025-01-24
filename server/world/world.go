@@ -65,12 +65,17 @@ type World struct {
 
 	viewerMu sync.Mutex
 	viewers  map[*Loader]Viewer
+
+	runningTxMu sync.Mutex
+	runningTx   transaction
+	runningTxAt time.Time
 }
 
 // transaction is a type that may be added to the transaction queue of a World.
 // Its Run method is called when the transaction is taken out of the queue.
 type transaction interface {
 	Run(w *World)
+	CallerInfo() []string
 }
 
 // New creates a new initialised world. The world may be used right away, but
@@ -112,13 +117,13 @@ type ExecFunc func(tx *Tx)
 // that is closed once the transaction is complete.
 func (w *World) Exec(f ExecFunc) <-chan struct{} {
 	c := make(chan struct{})
-	w.queue <- normalTransaction{c: c, f: f}
+	w.queue <- normalTransaction{c: c, f: f, callerInfo: captureCallerInfo()}
 	return c
 }
 
 func (w *World) weakExec(invalid *atomic.Bool, cond *sync.Cond, f ExecFunc) <-chan bool {
 	c := make(chan bool, 1)
-	w.queue <- weakTransaction{c: c, f: f, invalid: invalid, cond: cond}
+	w.queue <- weakTransaction{c: c, f: f, invalid: invalid, cond: cond, callerInfo: captureCallerInfo()}
 	return c
 }
 
@@ -128,7 +133,17 @@ func (w *World) handleTransactions() {
 	for {
 		select {
 		case tx := <-w.queue:
+			w.runningTxMu.Lock()
+			w.runningTx = tx
+			w.runningTxAt = time.Now()
+			w.runningTxMu.Unlock()
+
 			tx.Run(w)
+
+			w.runningTxMu.Lock()
+			w.runningTx = nil
+			w.runningTxAt = time.Time{}
+			w.runningTxMu.Unlock()
 		case <-w.closing:
 			w.running.Done()
 			return
