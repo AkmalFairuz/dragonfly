@@ -118,7 +118,8 @@ func (conf Config) New() *World {
 				w.runningTxMu.Lock()
 				if w.runningTx != nil && time.Since(w.runningTxAt) > 5*time.Second {
 					panicMsg := "Deadlock detected in world transaction. The transaction has been running for more than 5 seconds."
-					panicMsg += "\nPENDING TRANSACTIONS:"
+					panicMsg += "\n\nWORLD NAME: " + w.Name()
+					panicMsg += "\n\nPENDING TRANSACTIONS:"
 
 					txs := w.queue
 
