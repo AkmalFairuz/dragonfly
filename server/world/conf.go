@@ -116,8 +116,8 @@ func (conf Config) New() *World {
 			case <-t2.C:
 				// Detect deadlock
 				w.runningTxMu.Lock()
-				if w.runningTx != nil && time.Since(w.runningTxAt) > 5*time.Second {
-					panicMsg := "Deadlock detected in world transaction. The transaction has been running for more than 5 seconds."
+				if w.runningTx != nil && time.Since(w.runningTxAt) > 20*time.Second {
+					panicMsg := "Deadlock detected in world transaction. The transaction has been running for more than 20 seconds."
 					panicMsg += "\n\nWORLD NAME: " + w.Name()
 					panicMsg += "\n\nPENDING TRANSACTIONS:"
 
