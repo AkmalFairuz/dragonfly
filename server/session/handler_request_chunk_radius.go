@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -11,6 +12,10 @@ type RequestChunkRadiusHandler struct{}
 // Handle ...
 func (*RequestChunkRadiusHandler) Handle(p packet.Packet, s *Session, tx *world.Tx, _ Controllable) error {
 	pk := p.(*packet.RequestChunkRadius)
+
+	if pk.ChunkRadius == 0 || pk.MaxChunkRadius == 0 {
+		return errors.New("invalid chunk radius")
+	}
 
 	if pk.ChunkRadius > s.maxChunkRadius {
 		pk.ChunkRadius = s.maxChunkRadius
