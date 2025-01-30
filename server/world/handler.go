@@ -52,6 +52,12 @@ type Handler interface {
 	// Leaves decaying happens when there is no wood block neighbouring it.
 	// ctx.Cancel() may be called to prevent leaves from decaying.
 	HandleLeavesDecay(ctx *Context, pos cube.Pos)
+	// HandleBlockRandomUpdate ...
+	HandleBlockRandomUpdate(ctx *Context, pos cube.Pos)
+	// HandleBlockScheduledUpdate ...
+	HandleBlockScheduledUpdate(ctx *Context, pos cube.Pos)
+	// HandleBlockNeighbourUpdate ...
+	HandleBlockNeighbourUpdate(ctx *Context, pos cube.Pos, changedNeighbour cube.Pos)
 	// HandleEntitySpawn handles an Entity being spawned into a World through a
 	// call to Tx.AddEntity.
 	HandleEntitySpawn(tx *Tx, e Entity)
@@ -81,6 +87,9 @@ func (NopHandler) HandleFireSpread(*Context, cube.Pos, cube.Pos)                
 func (NopHandler) HandleBlockBurn(*Context, cube.Pos)                           {}
 func (NopHandler) HandleCropTrample(*Context, cube.Pos)                         {}
 func (NopHandler) HandleLeavesDecay(*Context, cube.Pos)                         {}
+func (NopHandler) HandleBlockRandomUpdate(*Context, cube.Pos)                   {}
+func (NopHandler) HandleBlockScheduledUpdate(*Context, cube.Pos)                {}
+func (NopHandler) HandleBlockNeighbourUpdate(*Context, cube.Pos, cube.Pos)      {}
 func (NopHandler) HandleEntitySpawn(*Tx, Entity)                                {}
 func (NopHandler) HandleEntityDespawn(*Tx, Entity)                              {}
 func (NopHandler) HandleClose(*Tx)                                              {}

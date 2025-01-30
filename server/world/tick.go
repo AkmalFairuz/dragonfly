@@ -2,6 +2,7 @@ package world
 
 import (
 	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/event"
 	"github.com/df-mc/dragonfly/server/internal/sliceutil"
 	"maps"
 	"math/rand/v2"
@@ -90,6 +91,12 @@ func (t ticker) performNeighbourUpdates(tx *Tx) {
 
 	for _, update := range updates {
 		pos, changedNeighbour := update.pos, update.neighbour
+
+		ctx := event.C(tx)
+		if tx.World().Handler().HandleBlockNeighbourUpdate(ctx, pos, changedNeighbour); ctx.Cancelled() {
+			continue
+		}
+
 		if ticker, ok := tx.Block(pos).(NeighbourUpdateTicker); ok {
 			ticker.NeighbourUpdateTick(pos, changedNeighbour, tx)
 		}
@@ -159,11 +166,19 @@ func (t ticker) tickBlocksRandomly(tx *Tx, loaders []*Loader, tick int64) {
 
 	for _, pos := range randomBlocks {
 		if rb, ok := tx.Block(pos).(RandomTicker); ok {
+			ctx := event.C(tx)
+			if tx.World().Handler().HandleBlockRandomUpdate(ctx, pos); ctx.Cancelled() {
+				continue
+			}
 			rb.RandomTick(pos, tx, tx.World().r)
 		}
 	}
 	for _, pos := range blockEntities {
 		if tb, ok := tx.Block(pos).(TickerBlock); ok {
+			ctx := event.C(tx)
+			if tx.World().Handler().HandleBlockRandomUpdate(ctx, pos); ctx.Cancelled() {
+				continue
+			}
 			tb.Tick(tick, pos, tx)
 		}
 	}
@@ -290,6 +305,12 @@ func (queue *scheduledTickQueue) tick(tx *Tx, tick int64) {
 			continue
 		}
 		b := tx.Block(t.pos)
+
+		ctx := event.C(tx)
+		if w.Handler().HandleBlockScheduledUpdate(ctx, t.pos); ctx.Cancelled() {
+			continue
+		}
+
 		if ticker, ok := b.(ScheduledTicker); ok && BlockHash(b) == t.bhash {
 			ticker.ScheduledTick(t.pos, tx, w.r)
 		} else if liquid, ok := tx.World().additionalLiquid(t.pos); ok && BlockHash(liquid) == t.bhash {
