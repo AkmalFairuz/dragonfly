@@ -408,7 +408,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 
 	dim, _ := world.DimensionID(w.Dimension())
 	same := w.Dimension() == s.chunkLoader.World().Dimension()
-	if same && !s.requireResendDimension.Load() {
+	if same && (!s.requireResendDimension.Load() || !s.changingDimension.Load()) {
 		targetDimID := s.loadingScreenDimensionID(int32(dim))
 		s.requireResendDimension.Store(true)
 		s.changeDimension(targetDimID, true, c)
