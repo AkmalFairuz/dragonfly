@@ -25,6 +25,11 @@ func (h PlayerAuthInputHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 
 // handleMovement handles the movement part of the packet.PlayerAuthInput.
 func (h PlayerAuthInputHandler) handleMovement(pk *packet.PlayerAuthInput, s *Session, c Controllable) error {
+	if s.ChangingDimension() {
+		// The player is changing dimension, so don't allow any movement until the dimension change has
+		// been completed.
+		return nil
+	}
 	yaw, pitch := c.Rotation().Elem()
 	pos := c.Position()
 

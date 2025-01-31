@@ -408,13 +408,8 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 
 	dim, _ := world.DimensionID(w.Dimension())
 	same := w.Dimension() == s.chunkLoader.World().Dimension()
-	if same {
-		var targetDimID int32
-		if dim == packet.DimensionOverworld {
-			targetDimID = packet.DimensionNether
-		} else {
-			targetDimID = packet.DimensionOverworld
-		}
+	if same && !s.requireResendDimension.Load() {
+		targetDimID := s.loadingScreenDimensionID(int32(dim))
 		s.requireResendDimension.Store(true)
 		s.changeDimension(targetDimID, true, c)
 
@@ -429,11 +424,20 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 				s.sendEmptyChunk(world.ChunkPos{x, z}, targetDim)
 			}
 		}
-	} else {
+	} else if !same {
 		s.changeDimension(int32(dim), false, c)
 	}
 	s.ViewEntityTeleport(c, c.Position())
 	s.chunkLoader.ChangeWorld(tx, w)
+}
+
+// loadingScreenDimensionID returns the dimension ID that the loading screen should be shown in. It returns the
+// dimension ID of the world that the player is currently in.
+func (s *Session) loadingScreenDimensionID(dim int32) int32 {
+	if dim == packet.DimensionOverworld {
+		return packet.DimensionNether
+	}
+	return packet.DimensionOverworld
 }
 
 // changeDimension changes the dimension of the client. If silent is set to true, the portal noise will be stopped
