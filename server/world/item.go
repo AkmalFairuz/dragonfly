@@ -51,6 +51,25 @@ func RegisterItem(item Item) {
 	items[h] = item
 }
 
+// ForceRegisterItem registers an item with the ID and meta passed, overwriting any existing item with the
+// same ID and meta.
+func ForceRegisterItem(item Item) {
+	name, meta := item.EncodeItem()
+	h := itemHash{name: name, meta: meta}
+
+	if c, ok := item.(CustomItem); ok {
+		nextRID := int32(len(itemNamesToRuntimeIDs))
+		itemRuntimeIDsToNames[nextRID] = name
+		itemNamesToRuntimeIDs[name] = nextRID
+
+		customItems = append(customItems, c)
+	}
+	if _, ok := itemNamesToRuntimeIDs[name]; !ok {
+		panic(fmt.Sprintf("item name %v does not have a runtime ID", name))
+	}
+	items[h] = item
+}
+
 // itemHash is a combination of an item's name and metadata. It is used as a key in hash maps.
 type itemHash struct {
 	name string

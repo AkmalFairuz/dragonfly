@@ -109,6 +109,27 @@ func RegisterBlock(b Block) {
 	}
 }
 
+// ForceRegisterBlock registers the Block passed, even if the block was already registered.
+func ForceRegisterBlock(b Block) {
+	if bitSize > 0 {
+		panic(fmt.Errorf("tried to register a block after the block registry was finalised"))
+	}
+	name, properties := b.EncodeBlock()
+	if _, ok := b.(CustomBlock); ok {
+		registerBlockState(blockState{Name: name, Properties: properties})
+	}
+	rid, ok := stateRuntimeIDs[stateHash{name: name, properties: hashProperties(properties)}]
+	if !ok {
+		panic(fmt.Sprintf("block state returned is not registered (%v {%#v})", name, properties))
+	}
+	blocks[rid] = b
+	if c, ok := b.(CustomBlock); ok {
+		if _, ok := customBlocks[name]; !ok {
+			customBlocks[name] = c
+		}
+	}
+}
+
 // finaliseBlockRegistry is called after blocks have finished registering and the palette can be sorted and
 // hashed, which also calls finaliseBlock for each block that has been registered up to this point.
 // noinspection GoUnusedFunction
