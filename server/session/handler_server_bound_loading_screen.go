@@ -15,7 +15,7 @@ type ServerBoundLoadingScreenHandler struct {
 }
 
 // Handle ...
-func (h *ServerBoundLoadingScreenHandler) Handle(p packet.Packet, s *Session, _ *world.Tx, _ Controllable) error {
+func (h *ServerBoundLoadingScreenHandler) Handle(p packet.Packet, s *Session, _ *world.Tx, c Controllable) error {
 	pk := p.(*packet.ServerBoundLoadingScreen)
 	v, ok := pk.LoadingScreenID.Value()
 	if !ok || h.expectedID.Load() == 0 {
@@ -25,6 +25,12 @@ func (h *ServerBoundLoadingScreenHandler) Handle(p packet.Packet, s *Session, _ 
 	} else if pk.Type == packet.LoadingScreenTypeEnd {
 		s.changingDimension.Store(false)
 		h.expectedID.Store(0)
+		if s.requireResendDimension.CompareAndSwap(true, false) {
+			dim, _ := world.DimensionID(s.chunkLoader.World().Dimension())
+			s.changeDimension(int32(dim), true, c)
+		} else {
+			s.ViewEntityTeleport(c, c.Position())
+		}
 	}
 	return nil
 }

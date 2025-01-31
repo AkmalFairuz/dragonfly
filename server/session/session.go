@@ -74,6 +74,7 @@ type Session struct {
 	swingingArm                    atomic.Bool
 	changingSlot                   atomic.Bool
 	changingDimension              atomic.Bool
+	requireResendDimension         atomic.Bool
 	moving                         bool
 
 	recipes map[uint32]recipe.Recipe
@@ -382,6 +383,10 @@ func (s *Session) sendChunks(tx *world.Tx, c Controllable) {
 		Radius:   uint32(s.chunkRadius) << 4,
 	})
 
+	if s.requireResendDimension.Load() {
+		return
+	}
+
 	s.blobMu.Lock()
 	const maxChunkTransactions = 8
 	toLoad := maxChunkTransactions - len(s.openChunkTransactions)
@@ -403,7 +408,28 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 
 	dim, _ := world.DimensionID(w.Dimension())
 	same := w.Dimension() == s.chunkLoader.World().Dimension()
-	if !same {
+	if same {
+		var targetDimID int32
+		if dim == packet.DimensionOverworld {
+			targetDimID = packet.DimensionNether
+		} else {
+			targetDimID = packet.DimensionOverworld
+		}
+		s.requireResendDimension.Store(true)
+		s.changeDimension(targetDimID, true, c)
+
+		targetDim, _ := world.DimensionByID(int(targetDimID))
+
+		chunkX := int32(c.Position().X()) >> 4
+		chunkZ := int32(c.Position().Z()) >> 4
+
+		radius := s.chunkRadius
+		for x := chunkX - radius; x <= chunkX+radius; x++ {
+			for z := chunkZ - radius; z <= chunkZ+radius; z++ {
+				s.sendEmptyChunk(world.ChunkPos{x, z}, targetDim)
+			}
+		}
+	} else {
 		s.changeDimension(int32(dim), false, c)
 	}
 	s.ViewEntityTeleport(c, c.Position())

@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"github.com/cespare/xxhash/v2"
+	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/chunk"
@@ -245,4 +246,9 @@ func (s *Session) trackBlob(hash uint64, blob []byte) bool {
 	s.blobs[hash] = blob
 	s.blobMu.Unlock()
 	return true
+}
+
+// sendEmptyChunk sends an empty chunk to the client at the position passed.
+func (s *Session) sendEmptyChunk(pos world.ChunkPos, dim world.Dimension) {
+	s.ViewChunk(pos, dim, map[cube.Pos]world.Block{}, chunk.New(world.BlockRuntimeID(block.Air{}), dim.Range()))
 }
