@@ -27,7 +27,7 @@ func (h *ServerBoundLoadingScreenHandler) Handle(p packet.Packet, s *Session, _ 
 		h.expectedID.Store(0)
 		if s.requireResendDimension.CompareAndSwap(true, false) {
 			dim, _ := world.DimensionID(s.chunkLoader.World().Dimension())
-			s.changeDimension(int32(dim), true, c)
+			s.changeDimension(int32(dim), true, true, c)
 		}
 		s.ViewEntityTeleport(c, c.Position())
 		_ = s.conn.Flush()

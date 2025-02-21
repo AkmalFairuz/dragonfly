@@ -411,7 +411,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 	if same && (!s.requireResendDimension.Load() || !s.changingDimension.Load()) {
 		targetDimID := s.loadingScreenDimensionID(int32(dim))
 		s.requireResendDimension.Store(true)
-		s.changeDimension(targetDimID, true, c)
+		s.changeDimension(targetDimID, true, false, c)
 
 		targetDim, _ := world.DimensionByID(int(targetDimID))
 
@@ -425,7 +425,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 			}
 		}
 	} else if !same {
-		s.changeDimension(int32(dim), false, c)
+		s.changeDimension(int32(dim), false, true, c)
 	}
 	s.ViewEntityTeleport(c, c.Position())
 	s.chunkLoader.ChangeWorld(tx, w)
@@ -442,7 +442,7 @@ func (s *Session) loadingScreenDimensionID(dim int32) int32 {
 
 // changeDimension changes the dimension of the client. If silent is set to true, the portal noise will be stopped
 // immediately.
-func (s *Session) changeDimension(dim int32, silent bool, c Controllable) {
+func (s *Session) changeDimension(dim int32, silent bool, playStatus bool, c Controllable) {
 	s.changingDimension.Store(true)
 	h := s.handlers[packet.IDServerBoundLoadingScreen].(*ServerBoundLoadingScreenHandler)
 	id := h.currentID.Add(1)
@@ -454,7 +454,9 @@ func (s *Session) changeDimension(dim int32, silent bool, c Controllable) {
 		LoadingScreenID: protocol.Option(id),
 	})
 	s.writePacket(&packet.StopSound{StopAll: silent})
-	s.writePacket(&packet.PlayStatus{Status: packet.PlayStatusPlayerSpawn})
+	if playStatus {
+		s.writePacket(&packet.PlayStatus{Status: packet.PlayStatusPlayerSpawn})
+	}
 
 	// As of v1.19.50, the dimension ack that is meant to be sent by the client is now sent by the server. The client
 	// still sends the ack, but after the server has sent it. Thanks to Mojang for another groundbreaking change.
