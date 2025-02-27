@@ -413,6 +413,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 		targetDimID := s.loadingScreenDimensionID(int32(dim))
 		s.requireResendDimension.Store(true)
 		s.changeDimension(targetDimID, true, false, c)
+		_ = s.conn.Flush() // Flush before sending chunks to ensure no glitches occur.
 
 		targetDim, _ := world.DimensionByID(int(targetDimID))
 
