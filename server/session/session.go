@@ -425,6 +425,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 				s.sendEmptyChunk(world.ChunkPos{x, z}, targetDim)
 			}
 		}
+
 		_ = s.conn.Flush()
 	} else if !same {
 		s.changeDimension(int32(dim), false, true, c)
@@ -446,6 +447,8 @@ func (s *Session) loadingScreenDimensionID(dim int32) int32 {
 // immediately.
 func (s *Session) changeDimension(dim int32, silent bool, playStatus bool, c Controllable) {
 	s.changingDimension.Store(true)
+	s.ViewEntityState(c)
+	
 	h := s.handlers[packet.IDServerBoundLoadingScreen].(*ServerBoundLoadingScreenHandler)
 	id := h.currentID.Add(1)
 	h.expectedID.Store(id)

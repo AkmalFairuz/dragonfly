@@ -38,6 +38,11 @@ func (s *Session) parseEntityMetadata(e world.Entity) protocol.EntityMetadata {
 	if ent, ok := e.(*entity.Ent); ok {
 		s.addSpecificMetadata(ent.Behaviour(), m)
 	}
+
+	if s.ent == e.H() && s.ChangingDimension() && !m.Flag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagNoAI) {
+		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagNoAI)
+	}
+
 	return m
 }
 

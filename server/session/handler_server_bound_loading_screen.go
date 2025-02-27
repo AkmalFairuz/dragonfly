@@ -30,6 +30,7 @@ func (h *ServerBoundLoadingScreenHandler) Handle(p packet.Packet, s *Session, _ 
 			s.changeDimension(int32(dim), true, true, c)
 		}
 		_ = s.conn.Flush()
+		s.ViewEntityState(c)
 		s.ViewEntityTeleport(c, c.Position())
 	}
 	return nil
