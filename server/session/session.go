@@ -426,6 +426,16 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 				s.sendEmptyChunk(world.ChunkPos{x, z}, targetDim)
 			}
 		}
+		_ = s.conn.Flush()
+
+		s.writePacket(&packet.PlayerAction{
+			EntityRuntimeID: selfEntityRuntimeID,
+			ActionType:      protocol.PlayerActionDimensionChangeDone,
+		})
+		_ = s.conn.Flush()
+
+		s.changeDimension(int32(dim), false, true, c)
+		_ = s.conn.Flush()
 	} else if !same {
 		s.changeDimension(int32(dim), false, true, c)
 	}
