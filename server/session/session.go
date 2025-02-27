@@ -419,7 +419,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 		chunkX := int32(c.Position().X()) >> 4
 		chunkZ := int32(c.Position().Z()) >> 4
 
-		radius := s.chunkRadius
+		const radius = 4
 		for x := chunkX - radius; x <= chunkX+radius; x++ {
 			for z := chunkZ - radius; z <= chunkZ+radius; z++ {
 				s.sendEmptyChunk(world.ChunkPos{x, z}, targetDim)
