@@ -425,6 +425,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 				s.sendEmptyChunk(world.ChunkPos{x, z}, targetDim)
 			}
 		}
+		_ = s.conn.Flush()
 	} else if !same {
 		s.changeDimension(int32(dim), false, true, c)
 	}

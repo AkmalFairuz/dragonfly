@@ -250,5 +250,5 @@ func (s *Session) trackBlob(hash uint64, blob []byte) bool {
 
 // sendEmptyChunk sends an empty chunk to the client at the position passed.
 func (s *Session) sendEmptyChunk(pos world.ChunkPos, dim world.Dimension) {
-	s.ViewChunk(pos, dim, map[cube.Pos]world.Block{}, chunk.New(world.BlockRuntimeID(block.InvisibleBedrock{}), dim.Range()))
+	s.ViewChunk(pos, dim, map[cube.Pos]world.Block{}, chunk.New(world.BlockRuntimeID(block.Air{}), dim.Range()))
 }
