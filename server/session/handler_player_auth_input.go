@@ -54,7 +54,7 @@ func (h PlayerAuthInputHandler) handleMovement(pk *packet.PlayerAuthInput, s *Se
 	if s.ChangingDimension() {
 		// The player is changing dimension, so don't allow any movement until the dimension change has
 		// been completed.
-		// s.ViewEntityTeleport(c, c.Position())
+		s.ViewEntityTeleport(c, c.Position())
 		return nil
 	}
 
