@@ -1,6 +1,7 @@
 package world
 
 import (
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"time"
@@ -100,12 +101,61 @@ func (conf Config) New() *World {
 	var h Handler = NopHandler{}
 	w.handler.Store(&h)
 
-	w.running.Add(3)
+	w.running.Add(4)
 
 	t := ticker{interval: time.Second / 20}
 	go t.tickLoop(w)
 	go w.autoSave()
 	go w.handleTransactions()
+
+	go func() {
+		t2 := time.NewTicker(time.Second)
+		defer t2.Stop()
+		for {
+			select {
+			case <-t2.C:
+				// Detect deadlock
+				w.runningTxMu.Lock()
+				if w.runningTx != nil && time.Since(w.runningTxAt) > 20*time.Second {
+					panicMsg := "Deadlock detected in world transaction. The transaction has been running for more than 20 seconds."
+					panicMsg += "\n\nWORLD NAME: " + w.Name()
+					panicMsg += "\n\nPENDING TRANSACTIONS:"
+
+					txs := w.queue
+
+					close(w.queue)
+
+					no := 0
+					for pendingTx := range txs {
+						no++
+						if no > 10 {
+							panicMsg += "\n..."
+							break
+						}
+						panicMsg += "\n\n" + fmt.Sprintf("TX NO %d:", no)
+						panicMsg += "\n------------------ BEGIN stack trace ------------------"
+						for _, trace := range pendingTx.CallerInfo() {
+							panicMsg += "\n" + trace
+						}
+						panicMsg += "\n------------------- END stack trace -------------------"
+					}
+
+					panicMsg += "\n\nHANGING TRANSACTION:"
+					panicMsg += "\n------------------ BEGIN stack trace ------------------"
+					for _, trace := range w.runningTx.CallerInfo() {
+						panicMsg += "\n" + trace
+					}
+					panicMsg += "\n------------------- END stack trace -------------------"
+
+					panic(panicMsg)
+				}
+				w.runningTxMu.Unlock()
+			case <-w.closing:
+				w.running.Done()
+				return
+			}
+		}
+	}()
 
 	<-w.Exec(t.tick)
 	return w

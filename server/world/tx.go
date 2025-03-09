@@ -232,8 +232,14 @@ func (tx *Tx) close() {
 // normalTransaction is added to the transaction queue for transactions created
 // using World.Exec().
 type normalTransaction struct {
-	c chan struct{}
-	f func(tx *Tx)
+	c          chan struct{}
+	f          func(tx *Tx)
+	callerInfo []string
+}
+
+// CallerInfo returns the caller information of the transaction.
+func (ntx normalTransaction) CallerInfo() []string {
+	return ntx.callerInfo[:]
 }
 
 // Run creates a *Tx, calls ntx.f, closes the transaction and finally closes
@@ -248,10 +254,16 @@ func (ntx normalTransaction) Run(w *World) {
 // weakTransaction is a transaction that may be cancelled by setting its invalid
 // bool to false before the transaction is run.
 type weakTransaction struct {
-	c       chan bool
-	f       func(tx *Tx)
-	invalid *atomic.Bool
-	cond    *sync.Cond
+	c          chan bool
+	f          func(tx *Tx)
+	invalid    *atomic.Bool
+	cond       *sync.Cond
+	callerInfo []string
+}
+
+// CallerInfo returns the caller information of the transaction.
+func (wtx weakTransaction) CallerInfo() []string {
+	return wtx.callerInfo[:]
 }
 
 // Run runs the transaction, first checking if its invalid bool is false and
