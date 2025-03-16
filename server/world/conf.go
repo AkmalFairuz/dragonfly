@@ -121,23 +121,25 @@ func (conf Config) New() *World {
 					panicMsg += "\n\nWORLD NAME: " + w.Name()
 					panicMsg += "\n\nPENDING TRANSACTIONS:"
 
-					txs := w.queue
-
-					close(w.queue)
-
 					no := 0
-					for pendingTx := range txs {
-						no++
-						if no > 10 {
-							panicMsg += "\n..."
-							break
+					exitLoop := false
+					for !exitLoop {
+						select {
+						case pendingTx := <-w.queue:
+							no++
+							if no > 10 {
+								panicMsg += "\n..."
+								break
+							}
+							panicMsg += "\n\n" + fmt.Sprintf("TX NO %d:", no)
+							panicMsg += "\n------------------ BEGIN stack trace ------------------"
+							for _, trace := range pendingTx.CallerInfo() {
+								panicMsg += "\n" + trace
+							}
+							panicMsg += "\n------------------- END stack trace -------------------"
+						default:
+							exitLoop = true
 						}
-						panicMsg += "\n\n" + fmt.Sprintf("TX NO %d:", no)
-						panicMsg += "\n------------------ BEGIN stack trace ------------------"
-						for _, trace := range pendingTx.CallerInfo() {
-							panicMsg += "\n" + trace
-						}
-						panicMsg += "\n------------------- END stack trace -------------------"
 					}
 
 					panicMsg += "\n\nHANGING TRANSACTION:"
