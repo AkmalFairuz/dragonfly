@@ -400,6 +400,10 @@ func (s *Session) sendChunks(tx *world.Tx, c Controllable) {
 	s.chunkLoader.Load(tx, toLoad)
 }
 
+const (
+	enableWorldSwitchLoadingScreen = false
+)
+
 // handleWorldSwitch handles the player of the Session switching worlds.
 func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable) {
 	if s.conn.ClientCacheEnabled() {
@@ -411,7 +415,7 @@ func (s *Session) handleWorldSwitch(w *world.World, tx *world.Tx, c Controllable
 
 	dim, _ := world.DimensionID(w.Dimension())
 	same := w.Dimension() == s.chunkLoader.World().Dimension()
-	if same && (!s.requireResendDimension.Load() || !s.changingDimension.Load()) {
+	if same && (!s.requireResendDimension.Load() || !s.changingDimension.Load()) && enableWorldSwitchLoadingScreen {
 		targetDimID := s.loadingScreenDimensionID(int32(dim))
 		s.requireResendDimension.Store(true)
 		s.changeDimension(targetDimID, true, false, c)
