@@ -144,6 +144,16 @@ func (e *EntityHandle) Close() error {
 	return nil
 }
 
+// EntityData ...
+func (e *EntityHandle) EntityData() EntityData {
+	return e.data
+}
+
+// SetEntityData ...
+func (e *EntityHandle) SetEntityData(data EntityData) {
+	e.data = data
+}
+
 // ExecWorld obtains the EntityHandle's World in a thread-safe way and opens a
 // transaction in it when it does. If the EntityHandle has not been added to a
 // world, ExecWorld will block until the EntityHandle is added to a World and
