@@ -102,6 +102,14 @@ type playerData struct {
 	prevWorld *world.World
 }
 
+// Session ...
+func (pdata *playerData) Session() *session.Session {
+	if pdata.s == nil {
+		return session.Nop
+	}
+	return pdata.s
+}
+
 // Player is an implementation of a player entity. It has methods that implement the behaviour that players
 // need to play in the world.
 type Player struct {
