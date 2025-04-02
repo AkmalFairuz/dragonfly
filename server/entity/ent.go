@@ -40,6 +40,12 @@ func (e *Ent) Behaviour() Behaviour {
 	return e.data.Data.(Behaviour)
 }
 
+// SetPosAndRotNoUpdate ...
+func (e *Ent) SetPosAndRotNoUpdate(pos mgl64.Vec3, rot cube.Rotation) {
+	e.data.Pos = pos
+	e.data.Rot = rot
+}
+
 // Explode propagates the explosion behaviour of the underlying Behaviour.
 func (e *Ent) Explode(src mgl64.Vec3, impact float64, conf block.ExplosionConfig) {
 	if expl, ok := e.Behaviour().(interface {
