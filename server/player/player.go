@@ -3108,6 +3108,14 @@ func (p *Player) resendBlock(pos cube.Pos) {
 	}
 }
 
+// SetRotation ...
+func (p *Player) SetRotation(rot cube.Rotation) {
+	for _, v := range p.viewers() {
+		v.ViewEntityMovement(p, p.Position(), rot, p.onGround)
+	}
+	p.data.Rot = rot
+}
+
 // format is a utility function to format a list of values to have spaces between them, but no newline at the
 // end, which is typically used for sending messages, popups and tips.
 func format(a []any) string {
