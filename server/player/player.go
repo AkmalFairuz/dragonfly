@@ -3124,6 +3124,12 @@ func (p *Player) SetRotation(rot cube.Rotation) {
 	p.data.Rot = rot
 }
 
+// SetPosAndRotNoUpdate sets the position and rotation of the player without updating the viewers.
+func (p *Player) SetPosAndRotNoUpdate(pos mgl64.Vec3, rot cube.Rotation) {
+	p.data.Pos = pos
+	p.data.Rot = rot
+}
+
 // format is a utility function to format a list of values to have spaces between them, but no newline at the
 // end, which is typically used for sending messages, popups and tips.
 func format(a []any) string {
