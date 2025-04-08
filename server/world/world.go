@@ -1080,9 +1080,14 @@ func (w *World) removeViewer(tx *Tx, pos ChunkPos, loader *Loader) {
 		c.loaders = slices.Delete(c.loaders, i, i+1)
 	}
 
+	viewer := loader.viewer
+	if viewer == nil {
+		return
+	}
+
 	// Hide all entities in the chunk from the viewer.
 	for _, entity := range c.Entities {
-		loader.viewer.HideEntity(entity.mustEntity(tx))
+		viewer.HideEntity(entity.mustEntity(tx))
 	}
 }
 
