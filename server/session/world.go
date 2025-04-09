@@ -233,10 +233,14 @@ func (s *Session) ViewEntityVelocity(e world.Entity, velocity mgl64.Vec3) {
 	if s.entityHidden(e) {
 		return
 	}
+	runtimeID := s.entityRuntimeID(e)
 	s.writePacket(&packet.SetActorMotion{
-		EntityRuntimeID: s.entityRuntimeID(e),
+		EntityRuntimeID: runtimeID,
 		Velocity:        vec64To32(velocity),
 	})
+	if runtimeID == selfEntityRuntimeID {
+		_ = s.Flush()
+	}
 }
 
 // entityOffset returns the offset that entities have client-side.

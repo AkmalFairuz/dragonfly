@@ -547,6 +547,14 @@ func (s *Session) writePacket(pk packet.Packet) {
 	_ = s.conn.WritePacket(pk)
 }
 
+// Flush ...
+func (s *Session) Flush() error {
+	if s == Nop {
+		return nil
+	}
+	return s.conn.Flush()
+}
+
 // actorIdentifier represents the structure of an actor identifier sent over the network.
 type actorIdentifier struct {
 	// ID is a unique namespaced identifier for the entity.
