@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -24,7 +23,7 @@ func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 	case 0xff:
 		// TODO: Handle closing the crafting grid.
 	default:
-		return fmt.Errorf("unexpected close request for unopened container %v", pk.WindowID)
+		s.conf.Log.Debug("unexpected close request for unopened container", "window_id", pk.WindowID)
 	}
 	return nil
 }
