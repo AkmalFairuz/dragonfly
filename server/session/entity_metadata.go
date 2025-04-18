@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+// NetworkEntityMetadata ...
+type NetworkEntityMetadata interface {
+	NetworkEntityMetadata(v world.Viewer, e world.Entity, m protocol.EntityMetadata) protocol.EntityMetadata
+}
+
 // parseEntityMetadata returns an entity metadata object with default values. It is equivalent to setting
 // all properties to their default values and disabling all flags.
 func (s *Session) parseEntityMetadata(e world.Entity) protocol.EntityMetadata {
@@ -43,6 +48,9 @@ func (s *Session) parseEntityMetadata(e world.Entity) protocol.EntityMetadata {
 		m.SetFlag(protocol.EntityDataKeyFlags, protocol.EntityDataFlagNoAI)
 	}
 
+	if v, ok := e.H().Type().(NetworkEntityMetadata); ok {
+		m = v.NetworkEntityMetadata(s, e, m)
+	}
 	return m
 }
 

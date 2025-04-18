@@ -46,6 +46,11 @@ func (e *Ent) SetPosAndRotNoUpdate(pos mgl64.Vec3, rot cube.Rotation) {
 	e.data.Rot = rot
 }
 
+// Tx ...
+func (e *Ent) Tx() *world.Tx {
+	return e.tx
+}
+
 // Explode propagates the explosion behaviour of the underlying Behaviour.
 func (e *Ent) Explode(src mgl64.Vec3, impact float64, conf block.ExplosionConfig) {
 	if expl, ok := e.Behaviour().(interface {
