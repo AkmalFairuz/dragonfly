@@ -38,6 +38,11 @@ type OffsetEntity interface {
 	NetworkOffset() float64
 }
 
+// NetworkSpawnableEntity ...
+type NetworkSpawnableEntity interface {
+	NetworkSpawnEntity(e world.Entity, viewer world.Viewer, metadata protocol.EntityMetadata, runtimeID uint64) []packet.Packet
+}
+
 // entityHidden checks if a world.Entity is being explicitly hidden from the Session.
 func (s *Session) entityHidden(e world.Entity) bool {
 	s.entityMutex.RLock()
@@ -86,6 +91,14 @@ func (s *Session) doViewEntity(e world.Entity) {
 
 	yaw, pitch := e.Rotation().Elem()
 	metadata := s.parseEntityMetadata(e)
+
+	if v, ok := e.H().Type().(NetworkSpawnableEntity); ok {
+		packets := v.NetworkSpawnEntity(e, s, metadata, runtimeID)
+		for _, pk := range packets {
+			s.writePacket(pk)
+		}
+		return
+	}
 
 	id := e.H().Type().EncodeEntity()
 	switch v := e.(type) {
