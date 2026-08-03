@@ -252,20 +252,12 @@ const (
 	craftingResult          = 50
 )
 
-// CraftingGridSize returns the number of slots in the active crafting grid.
-func (s *Session) CraftingGridSize() uint32 {
+// CraftingGridBounds returns the offset and size of the active crafting grid in the UI inventory.
+func (s *Session) CraftingGridBounds() (offset, size int) {
 	if s.openedContainerID.Load() == 1 {
-		return craftingGridSizeLarge
+		return craftingGridLargeOffset, craftingGridSizeLarge
 	}
-	return craftingGridSizeSmall
-}
-
-// CraftingGridOffset returns the UI inventory offset of the active crafting grid.
-func (s *Session) CraftingGridOffset() uint32 {
-	if s.openedContainerID.Load() == 1 {
-		return craftingGridLargeOffset
-	}
-	return craftingGridSmallOffset
+	return craftingGridSmallOffset, craftingGridSizeSmall
 }
 
 // smelter is an interface representing a block used to smelt items.

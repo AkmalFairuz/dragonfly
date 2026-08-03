@@ -2,13 +2,14 @@ package session
 
 import (
 	"fmt"
+
 	"github.com/df-mc/dragonfly/server/item"
+	"github.com/df-mc/dragonfly/server/item/crafting"
 	"github.com/df-mc/dragonfly/server/item/creative"
 	"github.com/df-mc/dragonfly/server/item/inventory"
 	"github.com/df-mc/dragonfly/server/item/recipe"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
-	"math"
 )
 
 // handleCraft handles the CraftRecipe request action.
@@ -16,13 +17,13 @@ func (h *ItemStackRequestHandler) handleCraft(a *protocol.CraftRecipeStackReques
 	craft, ok := s.recipes[a.RecipeNetworkID]
 	if !ok {
 		// Try dynamic recipes if no static recipe matches
-		plan, err := c.DynamicCraftItem(int(a.NumberOfCrafts))
+		plan, err := c.PrepareDynamicCraft(int(a.NumberOfCrafts))
 		if err != nil {
 			return err
 		}
 		return h.applyCraftingPlan(plan, s, tx)
 	}
-	plan, err := c.CraftItem(craft, int(a.NumberOfCrafts))
+	plan, err := c.PrepareCraft(craft, int(a.NumberOfCrafts))
 	if err != nil {
 		return err
 	}
@@ -34,13 +35,13 @@ func (h *ItemStackRequestHandler) handleAutoCraft(a *protocol.AutoCraftRecipeSta
 	craft, ok := s.recipes[a.RecipeNetworkID]
 	if !ok {
 		// Try dynamic recipes if no static recipe matches
-		plan, err := c.DynamicCraftItem(int(a.TimesCrafted))
+		plan, err := c.PrepareDynamicCraft(int(a.TimesCrafted))
 		if err != nil {
 			return err
 		}
 		return h.applyCraftingPlan(plan, s, tx)
 	}
-	plan, err := c.AutoCraftItem(craft, int(a.TimesCrafted))
+	plan, err := c.PrepareAutoCraft(craft, int(a.TimesCrafted))
 	if err != nil {
 		return err
 	}
@@ -61,7 +62,7 @@ func (h *ItemStackRequestHandler) handleCreativeCraft(a *protocol.CraftCreativeS
 	return h.createResults(s, tx, it)
 }
 
-// matchingStacks returns true if the two stacks are the same in a crafting scenario.
+// matchingStacks reports whether two recipe items match in a crafting context.
 func matchingStacks(has, expected recipe.Item) bool {
 	switch expected := expected.(type) {
 	case item.Stack:
@@ -92,88 +93,82 @@ func matchingStacks(has, expected recipe.Item) bool {
 	panic(fmt.Errorf("tried to match with unexpected recipe item %T", expected))
 }
 
-// repeatStacks multiplies the count of all item stacks provided by the number of repetitions provided. Item
-// stacks where the new count would exceed the item's max count are split into multiple item stacks.
+// repeatStacks repeats item stacks, splitting outputs that exceed their maximum stack size.
 func repeatStacks(items []item.Stack, repetitions int) []item.Stack {
 	output := make([]item.Stack, 0, len(items))
-	for _, o := range items {
-		count, maxCount := o.Count(), o.MaxCount()
-		total := count * repetitions
-
-		stacks := int(math.Ceil(float64(total) / float64(maxCount)))
-		for i := 0; i < stacks; i++ {
-			inc := min(total, maxCount)
-			total -= inc
-
-			output = append(output, o.Grow(inc-count))
+	for _, stack := range items {
+		count, maxCount := stack.Count(), stack.MaxCount()
+		for total := count * repetitions; total > 0; {
+			increase := min(total, maxCount)
+			total -= increase
+			output = append(output, stack.Grow(increase-count))
 		}
 	}
 	return output
 }
 
-// applyCraftingPlan applies a crafting plan returned by a controllable and creates the resulting output items.
-func (h *ItemStackRequestHandler) applyCraftingPlan(plan recipe.CraftingPlan, s *Session, tx *world.Tx) error {
-	for _, change := range plan.Changes {
-		if err := h.setItemInCraftingInventory(change.Inventory, change.Slot, change.Stack, s); err != nil {
-			return err
-		}
-	}
-	return h.createResults(s, tx, plan.Results...)
-}
-
-// setItemInCraftingInventory applies a crafting slot change using the correct client container metadata.
-func (h *ItemStackRequestHandler) setItemInCraftingInventory(inv *inventory.Inventory, slot int, stack item.Stack, s *Session) error {
-	info, err := s.craftingSlotInfo(inv, slot)
-	if err != nil {
+// applyCraftingPlan validates and applies a crafting plan, then creates its output items.
+func (h *ItemStackRequestHandler) applyCraftingPlan(plan crafting.Plan, s *Session, tx *world.Tx) error {
+	if err := s.validateCraftingPlan(plan); err != nil {
 		return err
 	}
+	for _, change := range plan.Changes {
+		info, _, _ := s.craftingSlot(change.Source, change.Slot)
+		h.setItemInSlot(info, change.After, s, tx)
+	}
+	return h.createResults(s, tx, plan.Outputs...)
+}
 
-	before, _ := inv.Item(slot)
-	_ = inv.SetItem(slot, stack)
+// validateCraftingPlan verifies every slot before any part of a plan is applied.
+func (s *Session) validateCraftingPlan(plan crafting.Plan) error {
+	type slotKey struct {
+		source crafting.Source
+		slot   int
+	}
+	seen := make(map[slotKey]struct{}, len(plan.Changes))
+	for _, change := range plan.Changes {
+		key := slotKey{source: change.Source, slot: change.Slot}
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("crafting plan changes source %v slot %v more than once", change.Source, change.Slot)
+		}
+		seen[key] = struct{}{}
 
-	respSlot := protocol.StackResponseSlotInfo{
-		Slot:                 info.Slot,
-		HotbarSlot:           info.Slot,
-		Count:                byte(stack.Count()),
-		StackNetworkID:       item_id(stack),
-		DurabilityCorrection: int32(stack.MaxDurability() - stack.Durability()),
-	}
-
-	if h.changes[info.Container.ContainerID] == nil {
-		h.changes[info.Container.ContainerID] = map[byte]changeInfo{}
-	}
-	h.changes[info.Container.ContainerID][info.Slot] = changeInfo{
-		after:  respSlot,
-		before: before,
-	}
-
-	if h.responseChanges[h.currentRequest] == nil {
-		h.responseChanges[h.currentRequest] = map[*inventory.Inventory]map[byte]responseChange{}
-	}
-	if h.responseChanges[h.currentRequest][inv] == nil {
-		h.responseChanges[h.currentRequest][inv] = map[byte]responseChange{}
-	}
-	h.responseChanges[h.currentRequest][inv][info.Slot] = responseChange{
-		id:        respSlot.StackNetworkID,
-		timestamp: h.current,
+		_, inv, err := s.craftingSlot(change.Source, change.Slot)
+		if err != nil {
+			return err
+		}
+		current, err := inv.Item(change.Slot)
+		if err != nil {
+			return err
+		}
+		if !current.Equal(change.Before) {
+			return fmt.Errorf("crafting inventory changed before plan could be applied")
+		}
 	}
 	return nil
 }
 
-// craftingSlotInfo resolves the client-facing slot information for an inventory slot used by the crafting handlers.
-func (s *Session) craftingSlotInfo(inv *inventory.Inventory, slot int) (protocol.StackRequestSlotInfo, error) {
-	switch inv {
-	case s.ui:
+// craftingSlot resolves a crafting inventory slot to protocol and server inventory representations.
+func (s *Session) craftingSlot(source crafting.Source, slot int) (protocol.StackRequestSlotInfo, *inventory.Inventory, error) {
+	switch source {
+	case crafting.GridSource:
+		offset, size := s.CraftingGridBounds()
+		if slot < offset || slot >= offset+size {
+			return protocol.StackRequestSlotInfo{}, nil, fmt.Errorf("crafting grid slot %v out of range", slot)
+		}
 		return protocol.StackRequestSlotInfo{
 			Container: protocol.FullContainerName{ContainerID: protocol.ContainerCraftingInput},
 			Slot:      byte(slot),
-		}, nil
-	case s.inv:
+		}, s.ui, nil
+	case crafting.InventorySource:
+		if _, err := s.inv.Item(slot); err != nil {
+			return protocol.StackRequestSlotInfo{}, nil, err
+		}
 		return protocol.StackRequestSlotInfo{
 			Container: protocol.FullContainerName{ContainerID: protocol.ContainerCombinedHotBarAndInventory},
 			Slot:      byte(slot),
-		}, nil
+		}, s.inv, nil
 	default:
-		return protocol.StackRequestSlotInfo{}, fmt.Errorf("unsupported crafting inventory")
+		return protocol.StackRequestSlotInfo{}, nil, fmt.Errorf("unsupported crafting inventory %v", source)
 	}
 }
