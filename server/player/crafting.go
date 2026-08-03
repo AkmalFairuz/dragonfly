@@ -5,34 +5,35 @@ import (
 	"math"
 	"slices"
 
-	"github.com/df-mc/dragonfly/server/event"
 	"github.com/df-mc/dragonfly/server/item"
-	"github.com/df-mc/dragonfly/server/item/inventory"
+	"github.com/df-mc/dragonfly/server/item/crafting"
 	"github.com/df-mc/dragonfly/server/item/recipe"
 )
 
-// craftInventorySource identifies an inventory consulted while building an auto-crafting plan.
+// craftInventorySource is a snapshot of inventory slots consulted while preparing an auto-craft.
 type craftInventorySource struct {
-	// inventory is the source inventory searched for matching crafting ingredients.
-	inventory *inventory.Inventory
+	source crafting.Source
+	offset int
+	stacks []item.Stack
 }
 
-// CraftItem calculates a crafting plan for a recipe crafted directly from the player's current crafting grid.
-func (p *Player) CraftItem(craft recipe.Recipe, times int) (recipe.CraftingPlan, error) {
+// PrepareCraft prepares a crafting plan for a recipe crafted directly from the player's current crafting grid.
+func (p *Player) PrepareCraft(craft recipe.Recipe, times int) (crafting.Plan, error) {
 	if err := validateCraftingRecipe(craft); err != nil {
-		return recipe.CraftingPlan{}, err
+		return crafting.Plan{}, err
 	}
 	if times < 1 {
-		return recipe.CraftingPlan{}, fmt.Errorf("times crafted must be at least 1")
+		return crafting.Plan{}, fmt.Errorf("times crafted must be at least 1")
 	}
 
-	size := int(p.session().CraftingGridSize())
-	offset := int(p.session().CraftingGridOffset())
+	offset, size := p.session().CraftingGridBounds()
 	consumed := make([]bool, size)
-	plan := recipe.CraftingPlan{
-		Inputs:  make([]item.Stack, 0, len(craft.Input())),
-		Results: repeatCraftStacks(craft.Output(), times),
-		Changes: make([]recipe.CraftingSlotChange, 0, len(craft.Input())),
+	plan := crafting.Plan{
+		Action: crafting.Action{
+			Inputs:      make([]item.Stack, 0, len(craft.Input())),
+			Repetitions: times,
+		},
+		Changes: make([]crafting.SlotChange, 0, len(craft.Input())),
 	}
 
 	for _, expected := range craft.Input() {
@@ -42,82 +43,111 @@ func (p *Player) CraftItem(craft recipe.Recipe, times int) (recipe.CraftingPlan,
 				continue
 			}
 			has, _ := p.ui.Item(slot)
-			if has.Empty() != expected.Empty() || has.Count() < expected.Count()*times {
-				continue
-			}
-			if !matchingCraftItems(has, expected) {
+			if has.Empty() != expected.Empty() || has.Count() < expected.Count()*times || !matchingCraftItems(has, expected) {
 				continue
 			}
 
 			processed, consumed[slot-offset] = true, true
 			if removal := expected.Count() * times; removal > 0 {
 				plan.Inputs = append(plan.Inputs, has.Grow(removal-has.Count()))
-				plan.Changes = append(plan.Changes, recipe.CraftingSlotChange{
-					Inventory: p.ui,
-					Slot:      slot,
-					Stack:     has.Grow(-removal),
+				plan.Changes = append(plan.Changes, crafting.SlotChange{
+					Source: crafting.GridSource,
+					Slot:   slot,
+					Before: has,
+					After:  has.Grow(-removal),
 				})
 			}
 			break
 		}
 		if !processed {
-			return recipe.CraftingPlan{}, fmt.Errorf("recipe could not consume expected item: %v", expected)
+			return crafting.Plan{}, fmt.Errorf("recipe could not consume expected item: %v", expected)
 		}
+	}
+	plan.Outputs = repeatCraftStacks(craft.Output(), times)
+	return p.approveCraftingPlan(plan)
+}
+
+// PrepareAutoCraft prepares a crafting plan for a recipe using the player's crafting grid and main inventory.
+func (p *Player) PrepareAutoCraft(craft recipe.Recipe, times int) (crafting.Plan, error) {
+	offset, size := p.session().CraftingGridBounds()
+	grid := make([]item.Stack, size)
+	for index := range grid {
+		grid[index], _ = p.ui.Item(offset + index)
+	}
+	plan, err := planAutoCraft(craft, times, []craftInventorySource{
+		{source: crafting.GridSource, offset: offset, stacks: grid},
+		{source: crafting.InventorySource, stacks: p.inv.Slots()},
+	})
+	if err != nil {
+		return crafting.Plan{}, err
 	}
 	return p.approveCraftingPlan(plan)
 }
 
-// AutoCraftItem calculates a crafting plan for a recipe crafted from the player's crafting grid and inventory.
-func (p *Player) AutoCraftItem(craft recipe.Recipe, times int) (recipe.CraftingPlan, error) {
+// planAutoCraft prepares an auto-crafting plan from inventory snapshots.
+func planAutoCraft(craft recipe.Recipe, times int, sources []craftInventorySource) (crafting.Plan, error) {
 	if err := validateCraftingRecipe(craft); err != nil {
-		return recipe.CraftingPlan{}, err
+		return crafting.Plan{}, err
 	}
 	if times < 1 {
-		return recipe.CraftingPlan{}, fmt.Errorf("times crafted must be at least 1")
+		return crafting.Plan{}, fmt.Errorf("times crafted must be at least 1")
 	}
 
 	flattenedInputs := make([]recipe.Item, 0, len(craft.Input()))
-	for _, it := range craft.Input() {
-		if it.Empty() {
+	for _, ingredient := range craft.Input() {
+		if ingredient.Empty() {
 			continue
 		}
 		if index := slices.IndexFunc(flattenedInputs, func(other recipe.Item) bool {
-			return matchingCraftItems(other, it)
+			return matchingCraftItems(other, ingredient)
 		}); index >= 0 {
-			flattenedInputs[index] = growRecipeItem(it, flattenedInputs[index].Count())
+			flattenedInputs[index] = growRecipeItem(ingredient, flattenedInputs[index].Count())
 			continue
 		}
-		flattenedInputs = append(flattenedInputs, it)
+		flattenedInputs = append(flattenedInputs, ingredient)
 	}
 
-	plan := recipe.CraftingPlan{
-		Inputs:  make([]item.Stack, 0, len(flattenedInputs)),
-		Results: repeatCraftStacks(craft.Output(), times),
-		Changes: make([]recipe.CraftingSlotChange, 0, len(flattenedInputs)),
+	plan := crafting.Plan{
+		Action: crafting.Action{
+			Inputs:      make([]item.Stack, 0, len(flattenedInputs)),
+			Repetitions: times,
+		},
+		Changes: make([]crafting.SlotChange, 0, len(flattenedInputs)),
 	}
-	sources := []craftInventorySource{
-		{inventory: p.ui},
-		{inventory: p.inv},
+	type slotKey struct {
+		source crafting.Source
+		slot   int
 	}
+	changed := make(map[slotKey]int)
 
 	for _, expected := range flattenedInputs {
 		remaining := expected.Count() * times
-
-		for _, source := range sources {
-			for slot, has := range source.inventory.Slots() {
+		for sourceIndex := range sources {
+			source := &sources[sourceIndex]
+			for index, has := range source.stacks {
 				if has.Empty() || !matchingCraftItems(has, expected) {
 					continue
 				}
 
 				removal := min(remaining, has.Count())
 				remaining -= removal
-
+				after := has.Grow(-removal)
+				source.stacks[index] = after
 				plan.Inputs = append(plan.Inputs, has.Grow(removal-has.Count()))
-				plan.Changes = append(plan.Changes, recipe.CraftingSlotChange{
-					Inventory: source.inventory,
-					Slot:      slot,
-					Stack:     has.Grow(-removal),
-				})
+
+				slot := source.offset + index
+				key := slotKey{source: source.source, slot: slot}
+				if changeIndex, ok := changed[key]; ok {
+					plan.Changes[changeIndex].After = after
+				} else {
+					changed[key] = len(plan.Changes)
+					plan.Changes = append(plan.Changes, crafting.SlotChange{
+						Source: source.source,
+						Slot:   slot,
+						Before: has,
+						After:  after,
+					})
+				}
 				if remaining == 0 {
 					break
 				}
@@ -127,82 +157,81 @@ func (p *Player) AutoCraftItem(craft recipe.Recipe, times int) (recipe.CraftingP
 			}
 		}
 		if remaining != 0 {
-			return recipe.CraftingPlan{}, fmt.Errorf("recipe could not consume expected item: %v", expected)
+			return crafting.Plan{}, fmt.Errorf("recipe could not consume expected item: %v", expected)
 		}
 	}
-	return p.approveCraftingPlan(plan)
+	plan.Outputs = repeatCraftStacks(craft.Output(), times)
+	return plan, nil
 }
 
-// DynamicCraftItem calculates a crafting plan for the first matching server-side dynamic recipe in the player's grid.
-func (p *Player) DynamicCraftItem(times int) (recipe.CraftingPlan, error) {
+// PrepareDynamicCraft prepares a crafting plan for the first matching server-side dynamic recipe in the player's grid.
+func (p *Player) PrepareDynamicCraft(times int) (crafting.Plan, error) {
 	if times < 1 {
-		return recipe.CraftingPlan{}, fmt.Errorf("times crafted must be at least 1")
+		return crafting.Plan{}, fmt.Errorf("times crafted must be at least 1")
 	}
 
-	size := int(p.session().CraftingGridSize())
-	offset := int(p.session().CraftingGridOffset())
+	offset, size := p.session().CraftingGridBounds()
 	input := make([]recipe.Item, size)
-	for i := 0; i < size; i++ {
-		slot := offset + i
-		stack, _ := p.ui.Item(slot)
-		if stack.Empty() {
-			input[i] = item.Stack{}
-			continue
-		}
-		input[i] = stack
+	for index := range input {
+		stack, _ := p.ui.Item(offset + index)
+		input[index] = stack
 	}
 
 	for _, dynamicRecipe := range recipe.DynamicRecipes() {
 		if dynamicRecipe.Block() != "crafting_table" {
 			continue
 		}
-
 		output, ok := dynamicRecipe.Match(input)
 		if !ok {
 			continue
 		}
 
 		minStackCount := math.MaxInt
-		for i := 0; i < size; i++ {
-			slot := offset + i
-			stack, _ := p.ui.Item(slot)
-			if !stack.Empty() && stack.Count() < minStackCount {
-				minStackCount = stack.Count()
+		for index := range input {
+			stack, _ := p.ui.Item(offset + index)
+			if !stack.Empty() {
+				minStackCount = min(minStackCount, stack.Count())
 			}
 		}
-		if minStackCount < times {
-			times = minStackCount
-		}
+		times = min(times, minStackCount)
 
-		plan := recipe.CraftingPlan{
-			Inputs:  make([]item.Stack, 0, size),
-			Results: repeatCraftStacks(output, times),
-			Changes: make([]recipe.CraftingSlotChange, 0, size),
+		plan := crafting.Plan{
+			Action: crafting.Action{
+				Inputs:      make([]item.Stack, 0, size),
+				Outputs:     repeatCraftStacks(output, times),
+				Repetitions: times,
+			},
+			Changes: make([]crafting.SlotChange, 0, size),
 		}
-		for i := 0; i < size; i++ {
-			slot := offset + i
+		for index := range input {
+			slot := offset + index
 			stack, _ := p.ui.Item(slot)
 			if stack.Empty() {
 				continue
 			}
 			plan.Inputs = append(plan.Inputs, stack.Grow(times-stack.Count()))
-			plan.Changes = append(plan.Changes, recipe.CraftingSlotChange{
-				Inventory: p.ui,
-				Slot:      slot,
-				Stack:     stack.Grow(-times),
+			plan.Changes = append(plan.Changes, crafting.SlotChange{
+				Source: crafting.GridSource,
+				Slot:   slot,
+				Before: stack,
+				After:  stack.Grow(-times),
 			})
 		}
 		return p.approveCraftingPlan(plan)
 	}
-
-	return recipe.CraftingPlan{}, fmt.Errorf("no matching recipe found for crafting grid")
+	return crafting.Plan{}, fmt.Errorf("no matching recipe found for crafting grid")
 }
 
-// approveCraftingPlan runs the player's craft handlers for a plan and returns the plan if it is allowed.
-func (p *Player) approveCraftingPlan(plan recipe.CraftingPlan) (recipe.CraftingPlan, error) {
-	ctx := event.C(p)
-	if p.Handler().HandleCraftItem(ctx, slices.Clone(plan.Inputs), slices.Clone(plan.Results)); ctx.Cancelled() {
-		return recipe.CraftingPlan{}, fmt.Errorf("craft item was cancelled")
+// approveCraftingPlan runs the player's craft handler and returns the plan if it is allowed.
+func (p *Player) approveCraftingPlan(plan crafting.Plan) (crafting.Plan, error) {
+	ctx := newContext(p)
+	p.Handler().HandleCraftingTable(ctx, crafting.Action{
+		Inputs:      slices.Clone(plan.Inputs),
+		Outputs:     slices.Clone(plan.Outputs),
+		Repetitions: plan.Repetitions,
+	})
+	if ctx.Cancelled() {
+		return crafting.Plan{}, fmt.Errorf("craft item was cancelled")
 	}
 	return plan, nil
 }
@@ -256,10 +285,7 @@ func repeatCraftStacks(items []item.Stack, repetitions int) []item.Stack {
 	output := make([]item.Stack, 0, len(items))
 	for _, stack := range items {
 		count, maxCount := stack.Count(), stack.MaxCount()
-		total := count * repetitions
-
-		stacks := int(math.Ceil(float64(total) / float64(maxCount)))
-		for i := 0; i < stacks; i++ {
+		for total := count * repetitions; total > 0; {
 			increase := min(total, maxCount)
 			total -= increase
 			output = append(output, stack.Grow(increase-count))
@@ -269,12 +295,12 @@ func repeatCraftStacks(items []item.Stack, repetitions int) []item.Stack {
 }
 
 // growRecipeItem increases the count stored in a recipe item while preserving its concrete recipe item type.
-func growRecipeItem(it recipe.Item, count int) recipe.Item {
-	switch it := it.(type) {
+func growRecipeItem(ingredient recipe.Item, count int) recipe.Item {
+	switch ingredient := ingredient.(type) {
 	case item.Stack:
-		return it.Grow(count)
+		return ingredient.Grow(count)
 	case recipe.ItemTag:
-		return recipe.NewItemTag(it.Tag(), it.Count()+count)
+		return recipe.NewItemTag(ingredient.Tag(), ingredient.Count()+count)
 	}
-	panic(fmt.Errorf("unexpected recipe item %T", it))
+	panic(fmt.Errorf("unexpected recipe item %T", ingredient))
 }
